@@ -8,7 +8,10 @@ ART_DIR="./local-validation"; mkdir -p "$ART_DIR"
 LOG="$ART_DIR/phase5.log"; exec > >(tee -a "$LOG") 2>&1
 echo "=== Phase 5: $(date) ==="
 
-MODELS=$(curl -sf http://127.0.0.1:1234/v1/models | python3 -c "import json,sys;[print(m['id']) for m in json.load(sys.stdin)['data']]")
+# Bench exactly the two models phase 2 loaded — /v1/models also lists unloaded
+# copies (which would JIT-load mid-benchmark) and embedding models.
+MODELS=$(python3 -c "import json;d=json.load(open('$ART_DIR/phase2.json'));print(d['coder_key']);print(d['docs_key'])") \
+  || { echo "FATAL: $ART_DIR/phase2.json missing — run phase 2 first"; exit 1; }
 GATE_FAIL=0
 for MODEL in $MODELS; do
   echo "--- Benchmarking $MODEL ---"
