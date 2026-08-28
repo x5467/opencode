@@ -12,6 +12,11 @@ if command -v claude >/dev/null && claude --version >/dev/null 2>&1; then
   claude || true
   read -rp "Did claude open a normal cloud session, untouched by this setup? [y/N] " a
   [[ "${a,,}" == y* ]] && CLAUDE_STATUS="PASS"
+else
+  # No claude CLI on this machine — Claude is used via the desktop/web app.
+  echo ">>> No 'claude' CLI installed. Open the Claude app and confirm it works normally."
+  read -rp "Does your Claude app open a normal cloud session, untouched by this setup? [y/N] " a
+  [[ "${a,,}" == y* ]] && CLAUDE_STATUS="PASS (via Claude app; no CLI installed on this Mac)"
 fi
 echo ">>> Launching 'opencode' — confirm the LOCAL session (lmstudio provider, then quit)."
 opencode || true

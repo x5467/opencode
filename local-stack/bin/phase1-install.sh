@@ -7,11 +7,23 @@ echo "=== Phase 1: $(date) ==="
 
 [[ "$(uname)" == "Darwin" ]] || { echo "FATAL: must run on the Mac (Darwin), got $(uname)"; exit 1; }
 
+# Homebrew installs to /opt/homebrew on Apple Silicon and may not be on PATH
+# in this shell yet (fresh install, unrestarted terminal) — detect it directly.
+[[ -x /opt/homebrew/bin/brew ]] && export PATH="/opt/homebrew/bin:$PATH"
+[[ -x /usr/local/bin/brew ]] && export PATH="/usr/local/bin:$PATH"
+
 # 1. Existing installs — never reinstall what is present and current.
 for c in brew lms ollama opencode claude; do
   printf "%-9s: " "$c"; command -v "$c" >/dev/null 2>&1 && echo "$(command -v "$c") ($($c --version 2>/dev/null | head -1))" || echo "absent"
 done
-command -v brew >/dev/null || { echo "FATAL: Homebrew absent. Install from https://brew.sh then re-run."; exit 1; }
+command -v brew >/dev/null || { cat <<'EOF'
+FATAL: Homebrew absent. It needs your macOS password (interactive), so install it yourself:
+
+  /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+
+Then re-run this script (it will find brew in /opt/homebrew automatically).
+EOF
+exit 1; }
 
 # 2. LM Studio
 if [[ -d "/Applications/LM Studio.app" ]]; then
