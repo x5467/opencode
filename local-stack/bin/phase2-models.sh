@@ -178,7 +178,9 @@ for M in "$CODER_KEY" "$DOCS_KEY"; do
 done
 
 # Budget verdict: KV quantization must be set BEFORE a load (applies at load time).
-if [[ ${#NEED_LOAD[@]} -gt 0 && "$KV8_REQUIRED" == "True" ]]; then
+# (${NEED_LOAD[*]:-} / ${NEED_LOAD[@]+...}: macOS bash 3.2 treats an empty array
+#  as unbound under set -u.)
+if [[ -n "${NEED_LOAD[*]:-}" && "$KV8_REQUIRED" == "True" ]]; then
   cat <<'EOF'
 >>> REQUIRED BY THE 12GB HEADROOM RULE: 8-bit KV cache, checked per model.
     LM Studio -> My Models -> gear icon per model -> "KV Cache Quantization" = 8-bit.
@@ -193,7 +195,7 @@ EOF
   read -rp "Press Enter once the KV settings are confirmed (Ctrl-C to stop)... "
 fi
 
-for M in "${NEED_LOAD[@]}"; do
+for M in ${NEED_LOAD[@]+"${NEED_LOAD[@]}"}; do
   if ! lms load "$M" --context-length 65536 --yes; then
     echo "Load failed for $M. If the error mentions memory/guardrails: LM Studio Settings -> Hardware -> guardrails 'Relaxed', or: sudo sysctl iogpu.wired_limit_mb=57344"
     read -rp "Apply a fix, then press Enter to retry once... "
