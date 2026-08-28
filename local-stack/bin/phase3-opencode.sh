@@ -12,10 +12,10 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 # Served model keys: prefer the identifiers phase 2 actually loaded (the /v1/models
 # listing also contains unloaded copies and embedding models), verified against the
 # live endpoint.
-MODELS_JSON=$(curl -sf http://127.0.0.1:1234/v1/models) || { echo "FATAL: LM Studio server not responding on :1234 — run phase2 first"; exit 1; }
-eval "$(echo "$MODELS_JSON" | python3 - "$ART_DIR/phase2.json" <<'PY'
+curl -sf http://127.0.0.1:1234/v1/models > "$ART_DIR/v1-models-live.json" || { echo "FATAL: LM Studio server not responding on :1234 — run phase2 first"; exit 1; }
+eval "$(python3 - "$ART_DIR/phase2.json" "$ART_DIR/v1-models-live.json" <<'PY'
 import json, sys
-served = [m["id"] for m in json.load(sys.stdin)["data"]]
+served = [m["id"] for m in json.load(open(sys.argv[2]))["data"]]
 coder = docs = None
 try:
     p2 = json.load(open(sys.argv[1]))
