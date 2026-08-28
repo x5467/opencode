@@ -3,6 +3,7 @@
 # loaded, per model, via streaming (prefill excluded from the tok/s figure).
 # Gate: >= 20 tok/s per model. On fail: log thermals + memory pressure, report, stop.
 set -euo pipefail
+export PATH="/opt/homebrew/bin:$HOME/.lmstudio/bin:$PATH"
 ART_DIR="./local-validation"; mkdir -p "$ART_DIR"
 LOG="$ART_DIR/phase5.log"; exec > >(tee -a "$LOG") 2>&1
 echo "=== Phase 5: $(date) ==="

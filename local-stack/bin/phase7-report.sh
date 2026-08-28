@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Phase 7: final report, parallel-operation verification, probation log.
 set -euo pipefail
+export PATH="/opt/homebrew/bin:$HOME/.lmstudio/bin:$PATH"
 ART_DIR="./local-validation"; mkdir -p "$ART_DIR"
 export PATH="$HOME/.lmstudio/bin:$PATH"
 REPORT="$ART_DIR/final-report.md"

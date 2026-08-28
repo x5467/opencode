@@ -3,6 +3,7 @@
 # Phases 1, 2 and 4 pause for their built-in confirmations; answer and it continues.
 # Phase 6 (interactive benchmark) and phase 7 (report) remain manual by design.
 set -euo pipefail
+export PATH="/opt/homebrew/bin:$HOME/.lmstudio/bin:$PATH"
 cd "$(cd "$(dirname "$0")/.." && pwd)"
 for p in phase1-install phase2-models phase3-opencode phase4-port-context phase5-bench; do
   echo; echo "########## $p ##########"; echo

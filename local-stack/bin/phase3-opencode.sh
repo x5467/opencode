@@ -3,15 +3,32 @@
 # Schema verified against OpenCode v1.18.25 source/docs; re-verify locally with:
 #   opencode --version   (and https://opencode.ai/config.json if versions diverge)
 set -euo pipefail
+export PATH="/opt/homebrew/bin:$HOME/.lmstudio/bin:$PATH"
 ART_DIR="./local-validation"; mkdir -p "$ART_DIR"
 LOG="$ART_DIR/phase3.log"; exec > >(tee -a "$LOG") 2>&1
 echo "=== Phase 3: $(date) ==="
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
-# Served model keys, verbatim from the live endpoint (never guessed).
+# Served model keys: prefer the identifiers phase 2 actually loaded (the /v1/models
+# listing also contains unloaded copies and embedding models), verified against the
+# live endpoint.
 MODELS_JSON=$(curl -sf http://127.0.0.1:1234/v1/models) || { echo "FATAL: LM Studio server not responding on :1234 — run phase2 first"; exit 1; }
-CODER_ID=$(echo "$MODELS_JSON" | python3 -c "import json,sys; d=json.load(sys.stdin)['data']; print(next(m['id'] for m in d if 'coder' in m['id'].lower()))")
-DOCS_ID=$(echo "$MODELS_JSON"  | python3 -c "import json,sys; d=json.load(sys.stdin)['data']; print(next(m['id'] for m in d if 'coder' not in m['id'].lower()))")
+eval "$(echo "$MODELS_JSON" | python3 - "$ART_DIR/phase2.json" <<'PY'
+import json, sys
+served = [m["id"] for m in json.load(sys.stdin)["data"]]
+coder = docs = None
+try:
+    p2 = json.load(open(sys.argv[1]))
+    if p2.get("coder_key") in served: coder = p2["coder_key"]
+    if p2.get("docs_key") in served: docs = p2["docs_key"]
+except Exception:
+    pass
+llm = [s for s in served if "embed" not in s.lower()]
+coder = coder or next(s for s in llm if "coder" in s.lower())
+docs = docs or next(s for s in llm if "coder" not in s.lower())
+print(f'CODER_ID="{coder}"; DOCS_ID="{docs}"')
+PY
+)"
 echo "Served keys: coder=$CODER_ID docs=$DOCS_ID"
 
 # Write global config (per-user; backs up any existing one, never touches ~/.claude).

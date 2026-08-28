@@ -148,32 +148,63 @@ CODER_KEY=$(resolve_key "$CODER_ID") || { echo "FATAL: cannot resolve local key 
 DOCS_KEY=$(resolve_key "$DOCS_ID")   || { echo "FATAL: cannot resolve local key for $DOCS_ID"; exit 1; }
 echo "Local model keys: coder=$CODER_KEY docs=$DOCS_KEY"
 
-# Budget verdict: 8-bit KV must be set BEFORE loading (it applies at load time).
-if [[ "$KV8_REQUIRED" == "True" ]]; then
+# 4. Server + ensure both models are loaded at EXACTLY 65536 context.
+# (>65536 fp16 KV can exceed the 12GB headroom rule if a session fills it;
+#  already-loaded-correct models are skipped so reruns never double-load.)
+lms server start --port 1234 || { echo "retrying server start once..."; sleep 3; lms server start --port 1234; }
+
+loaded_ctx() { # $1: model key -> prints its loaded context length, empty if not loaded
+  lms ps --json 2>/dev/null | python3 -c '
+import json, sys
+key = sys.argv[1].lower()
+try: d = json.load(sys.stdin)
+except Exception: sys.exit(0)
+for m in (d if isinstance(d, list) else d.get("models", [])):
+    ident = (m.get("identifier") or "").lower()
+    if ident and (key in ident or ident in key):
+        print(m.get("contextLength") or m.get("context_length") or ""); break
+' "$1"
+}
+
+NEED_LOAD=()
+for M in "$CODER_KEY" "$DOCS_KEY"; do
+  CTX=$(loaded_ctx "$M")
+  if [[ "$CTX" == "65536" ]]; then echo "$M already loaded at 65536 context — skipping."; continue; fi
+  [[ -n "$CTX" ]] && { echo "$M loaded at ctx=$CTX (need 65536) — unloading to reload."; lms unload "$M" || true; }
+  NEED_LOAD+=("$M")
+done
+
+# Budget verdict: KV quantization must be set BEFORE a load (applies at load time).
+if [[ ${#NEED_LOAD[@]} -gt 0 && "$KV8_REQUIRED" == "True" ]]; then
   cat <<'EOF'
->>> REQUIRED BY THE 12GB HEADROOM RULE: enable 8-bit KV cache for BOTH models.
-    1. LM Studio -> My Models (folder icon in the left rail).
-    2. For each of the two models: click its gear/settings icon.
-    3. Set "KV Cache Quantization" to 8-bit (both K and V if shown separately).
+>>> REQUIRED BY THE 12GB HEADROOM RULE: 8-bit KV cache, checked per model.
+    LM Studio -> My Models -> gear icon per model -> "KV Cache Quantization" = 8-bit.
     KNOWN LIMITATION: a model served through the mlx-vlm vision path (the
     Qwen3.6 35B build is one) rejects KV quantization with "batched vision
-    path does not support KV cache quantization". For that model set KV
-    quantization back to off/fp16 — the MIXED config (coder 8-bit KV, docs
-    fp16 KV) totals ~50 GB at 64K each, leaving ~14 GB headroom, which still
-    satisfies the 12 GB rule. Only if NEITHER model accepts 8-bit KV is the
-    configuration rejected.
+    path does not support KV cache quantization" — leave THAT model at
+    off/fp16. The mixed config (coder 8-bit, docs fp16) leaves ~14 GB
+    headroom at 64K each and still satisfies the 12 GB rule. Only if
+    NEITHER model accepts 8-bit KV is the configuration rejected.
+    Also confirm each model's Context Length setting is 65536 (not the max).
 EOF
-  read -rp "Press Enter once 8-bit KV cache is set for both models (Ctrl-C to stop)... "
+  read -rp "Press Enter once the KV settings are confirmed (Ctrl-C to stop)... "
 fi
 
-# 4. Server + load both models at 65536 context.
-lms server start --port 1234 || { echo "retrying server start once..."; sleep 3; lms server start --port 1234; }
-LOAD_FLAGS=(--context-length 65536 --yes)
-for M in "$CODER_KEY" "$DOCS_KEY"; do
-  if ! lms load "$M" "${LOAD_FLAGS[@]}"; then
+for M in "${NEED_LOAD[@]}"; do
+  if ! lms load "$M" --context-length 65536 --yes; then
     echo "Load failed for $M. If the error mentions memory/guardrails: LM Studio Settings -> Hardware -> guardrails 'Relaxed', or: sudo sysctl iogpu.wired_limit_mb=57344"
     read -rp "Apply a fix, then press Enter to retry once... "
-    lms load "$M" "${LOAD_FLAGS[@]}" || { echo "FATAL: load failed twice for $M"; exit 1; }
+    lms load "$M" --context-length 65536 --yes || { echo "FATAL: load failed twice for $M"; exit 1; }
+  fi
+  CTX=$(loaded_ctx "$M")
+  if [[ "$CTX" != "65536" ]]; then
+    echo "$M came up at ctx=$CTX — the loader ignored --context-length."
+    echo "Set it in the GUI: My Models -> gear on this model -> Context Length = 65536."
+    read -rp "Press Enter to reload with the GUI setting... "
+    lms unload "$M" || true
+    lms load "$M" --context-length 65536 --yes
+    CTX=$(loaded_ctx "$M")
+    [[ "$CTX" == "65536" ]] || { echo "FATAL: cannot pin $M to 65536 context (got $CTX)"; exit 1; }
   fi
 done
 

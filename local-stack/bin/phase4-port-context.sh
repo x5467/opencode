@@ -10,6 +10,7 @@
 #   name+description (Claude skills already have both; unknown fields are IGNORED,
 #   so content transfers byte-for-byte verbatim — zero words change).
 set -euo pipefail
+export PATH="/opt/homebrew/bin:$HOME/.lmstudio/bin:$PATH"
 ART_DIR="./local-validation"; mkdir -p "$ART_DIR"
 LOG="$ART_DIR/phase4.log"; exec > >(tee -a "$LOG") 2>&1
 echo "=== Phase 4: $(date) ==="
