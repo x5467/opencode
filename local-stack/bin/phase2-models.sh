@@ -28,11 +28,13 @@ if [[ "${1:-}" == "--check-challenger" ]]; then
   exit 0
 fi
 
-download_first_available() { # $1..: candidate ids; echoes the one that worked
+download_first_available() { # $1..: candidate HF ids; echoes the one that worked
+  # lms get treats bare owner/repo as an LM Studio Hub artifact; arbitrary
+  # Hugging Face repos must be addressed by full URL.
   local id
   for id in "$@"; do
-    echo "Trying: lms get $id --yes" >&2
-    if lms get "$id" --yes >&2; then echo "$id"; return 0; fi
+    echo "Trying: lms get https://huggingface.co/$id --yes" >&2
+    if lms get "https://huggingface.co/$id" --yes >&2; then echo "$id"; return 0; fi
   done
   return 1
 }
