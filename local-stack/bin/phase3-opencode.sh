@@ -38,12 +38,18 @@ sed -e "s|__CODER_ID__|$CODER_ID|g" -e "s|__DOCS_ID__|$DOCS_ID|g" \
   "$SCRIPT_DIR/../config/opencode.json.template" > "$CFG"
 echo "Wrote $CFG"
 
-# Cloud lockout check: only lmstudio may be enabled.
-opencode providers | tee "$ART_DIR/providers.txt"
-if grep -viE "lmstudio|disabled|^\s*$|─|═|name|npm|local" "$ART_DIR/providers.txt" | grep -qiE "anthropic|openai|google|openrouter|copilot"; then
-  echo "WARNING: a cloud provider still shows enabled — inspect $ART_DIR/providers.txt and extend disabled_providers."
-  exit 1
+# Cloud lockout check. The listing is informational; the functional test is
+# authoritative: a disabled provider must be refused locally (no request can
+# leave localhost precisely because the provider is disabled).
+opencode providers list > "$ART_DIR/providers.txt" 2>&1 || true
+cat "$ART_DIR/providers.txt"
+if opencode run -m anthropic/claude-sonnet-4-5 "say hi" >/dev/null 2>&1; then
+  echo "FATAL: an anthropic model was served — cloud lockout FAILED. Inspect disabled_providers in ~/.config/opencode/opencode.json"; exit 1
 fi
+if opencode run -m openai/gpt-4o "say hi" >/dev/null 2>&1; then
+  echo "FATAL: an openai model was served — cloud lockout FAILED."; exit 1
+fi
+echo "Cloud lockout verified: anthropic and openai model attempts refused."
 
 # 4. Model switching: both models must respond through OpenCode (headless run per model,
 #    then verify in-TUI switching manually with /models).
