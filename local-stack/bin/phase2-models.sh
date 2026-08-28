@@ -39,12 +39,21 @@ download_first_available() { # $1..: candidate HF ids; echoes the one that worke
   return 1
 }
 
-# 1. Downloads (skips already-downloaded automatically).
-CODER_ID=$(download_first_available "${CODER_CANDIDATES[@]}") \
+find_local() { # $1..: candidate ids; echoes the first already downloaded
+  local all id
+  all=$(lms ls 2>/dev/null | tr '[:upper:]' '[:lower:]') || return 1
+  for id in "$@"; do
+    grep -q "$(basename "$id" | tr '[:upper:]' '[:lower:]')" <<<"$all" && { echo "$id"; return 0; }
+  done
+  return 1
+}
+
+# 1. Downloads (a candidate already present locally is reused, never re-fetched).
+CODER_ID=$(find_local "${CODER_CANDIDATES[@]}") || CODER_ID=$(download_first_available "${CODER_CANDIDATES[@]}") \
   || { echo "FATAL: no coder-model candidate downloadable. Run 'lms get qwen3-coder-30b' interactively, note the exact id, and edit CODER_CANDIDATES."; exit 1; }
-DOCS_ID=$(download_first_available "${DOCS_CANDIDATES[@]}") \
+DOCS_ID=$(find_local "${DOCS_CANDIDATES[@]}") || DOCS_ID=$(download_first_available "${DOCS_CANDIDATES[@]}") \
   || { echo "FATAL: no docs-model candidate downloadable. Run 'lms get qwen3.6-35b' interactively and edit DOCS_CANDIDATES."; exit 1; }
-echo "Downloaded: coder=$CODER_ID docs=$DOCS_ID"
+echo "Using: coder=$CODER_ID docs=$DOCS_ID"
 
 # 2+3. Memory budget from the REAL downloaded weights + config.json; 12GB hard rule.
 MODELS_ROOT="$HOME/.lmstudio/models"; [[ -d "$MODELS_ROOT" ]] || MODELS_ROOT="$HOME/.cache/lm-studio/models"
@@ -103,18 +112,65 @@ PY
 
 KV8_REQUIRED=$(python3 -c "import json;print(json.load(open('$ART_DIR/phase2-budget.json'))['kv8_required'])")
 
+# The lms load model key is NOT the HF owner/repo string — resolve the real
+# local key from lms ls by matching on the repo name.
+resolve_key() { # $1: owner/repo -> local lms model key
+  python3 - "$1" <<'PY'
+import json, subprocess, sys
+want = sys.argv[1].split("/")[-1].lower()
+keys = []
+try:
+    out = subprocess.run(["lms","ls","--json"], capture_output=True, text=True, timeout=30).stdout
+    data = json.loads(out)
+    items = data if isinstance(data, list) else data.get("models") or data.get("data") or []
+    for m in items:
+        for f in ("modelKey","key","path","id"):
+            if isinstance(m, dict) and m.get(f):
+                keys.append(m[f]); break
+except Exception:
+    pass
+if not keys:
+    out = subprocess.run(["lms","ls"], capture_output=True, text=True, timeout=30).stdout
+    for line in out.splitlines():
+        t = line.strip().split()
+        if t and "/" not in t[0][:1]: keys.append(t[0])
+for k in keys:
+    if want in k.lower() or k.lower() in want:
+        print(k); sys.exit(0)
+# loosest match: shared 12-char prefix of the repo name
+for k in keys:
+    if want[:12] in k.lower():
+        print(k); sys.exit(0)
+sys.exit(f"no local model key matches '{want}'; lms ls keys: {keys}")
+PY
+}
+CODER_KEY=$(resolve_key "$CODER_ID") || { echo "FATAL: cannot resolve local key for $CODER_ID"; exit 1; }
+DOCS_KEY=$(resolve_key "$DOCS_ID")   || { echo "FATAL: cannot resolve local key for $DOCS_ID"; exit 1; }
+echo "Local model keys: coder=$CODER_KEY docs=$DOCS_KEY"
+
+# Budget verdict: 8-bit KV must be set BEFORE loading (it applies at load time).
+if [[ "$KV8_REQUIRED" == "True" ]]; then
+  cat <<'EOF'
+>>> REQUIRED BY THE 12GB HEADROOM RULE: enable 8-bit KV cache for BOTH models.
+    1. LM Studio -> My Models (folder icon in the left rail).
+    2. For each of the two models: click its gear/settings icon.
+    3. Set "KV Cache Quantization" to 8-bit (both K and V if shown separately).
+    If the setting does not exist for the MLX engine in your build, STOP here:
+    the fp16 configuration is rejected by the hard rule and must be reported.
+EOF
+  read -rp "Press Enter once 8-bit KV cache is set for both models (Ctrl-C to stop)... "
+fi
+
 # 4. Server + load both models at 65536 context.
 lms server start --port 1234 || { echo "retrying server start once..."; sleep 3; lms server start --port 1234; }
 LOAD_FLAGS=(--context-length 65536 --yes)
-for M in "$CODER_ID" "$DOCS_ID"; do
+for M in "$CODER_KEY" "$DOCS_KEY"; do
   if ! lms load "$M" "${LOAD_FLAGS[@]}"; then
-    echo "Load failed for $M — likely the macOS GPU wired-memory guardrail with two ~18-20GB models."
-    echo "Fix: LM Studio Settings -> Hardware -> guardrails 'Relaxed', or: sudo sysctl iogpu.wired_limit_mb=57344"
+    echo "Load failed for $M. If the error mentions memory/guardrails: LM Studio Settings -> Hardware -> guardrails 'Relaxed', or: sudo sysctl iogpu.wired_limit_mb=57344"
     read -rp "Apply a fix, then press Enter to retry once... "
     lms load "$M" "${LOAD_FLAGS[@]}" || { echo "FATAL: load failed twice for $M"; exit 1; }
   fi
 done
-[[ "$KV8_REQUIRED" == "True" ]] && echo "NOTE: enable 8-bit KV cache in each model's load settings (LM Studio > My Models > gear > KV Cache Quantization) — budget requires it."
 
 # Confirm ACTUAL loaded context, not theoretical max.
 lms ps | tee "$ART_DIR/lms-ps.txt"
@@ -155,5 +211,5 @@ assert "tool_call" not in c and '"arguments"' not in c, "tool-call JSON pasted i
 print("tool_calls OK:", f["name"], f["arguments"])
 PY
 
-printf '{"coder_repo":"%s","docs_repo":"%s"}\n' "$CODER_ID" "$DOCS_ID" > "$ART_DIR/phase2.json"
+printf '{"coder_repo":"%s","docs_repo":"%s","coder_key":"%s","docs_key":"%s"}\n' "$CODER_ID" "$DOCS_ID" "$CODER_KEY" "$DOCS_KEY" > "$ART_DIR/phase2.json"
 echo "=== Phase 2 PASS ==="
