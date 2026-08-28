@@ -34,11 +34,17 @@ with urllib.request.urlopen(req, timeout=1800) as r:
         line = line.strip()
         if not line.startswith(b"data: ") or line == b"data: [DONE]": continue
         d = json.loads(line[6:])
-        if d["choices"] and d["choices"][0].get("delta", {}).get("content"):
+        if not d.get("choices"): continue
+        delta = d["choices"][0].get("delta", {})
+        # reasoning models stream thinking as reasoning_content — those are
+        # generated tokens too and count toward generation speed
+        if delta.get("content") or delta.get("reasoning_content") or delta.get("reasoning"):
             if first is None: first = time.time()
             n += 1
 t1 = time.time()
-gen = t1 - first if first else 0.001
+if first is None:
+    sys.exit(f"no generated deltas received from {model} — inspect the raw stream")
+gen = max(t1 - first, 0.001)
 print(f"chunks={n} prefill={first-t0:.1f}s gen={gen:.1f}s tok/s={n/gen:.1f}", file=sys.stderr)
 print(f"{n/gen:.1f}")
 PY

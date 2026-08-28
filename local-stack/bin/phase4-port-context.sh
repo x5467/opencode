@@ -23,6 +23,15 @@ while IFS= read -r f; do CLAUDE_FILES+=("$f"); done < <(
   find "$HOME" -maxdepth 6 -name CLAUDE.md \
     -not -path "*/Library/*" -not -path "*/node_modules/*" -not -path "*/.Trash/*" \
     -not -path "$HOME/.claude/*" 2>/dev/null | sort)
+# Cloud-synced locations (OneDrive lives under ~/Library/CloudStorage, which the
+# general search excludes). macOS may prompt to allow Terminal access to these
+# folders — click Allow, then Ctrl-C and rerun this phase for a complete listing.
+for cloud in "$HOME/Library/CloudStorage"/*/ "$HOME/OneDrive"*/; do
+  [[ -d "$cloud" ]] || continue
+  while IFS= read -r f; do CLAUDE_FILES+=("$f"); done < <(
+    find "$cloud" -maxdepth 7 -name CLAUDE.md \
+      -not -path "*/node_modules/*" 2>/dev/null | sort)
+done
 printf '%s\n' "${CLAUDE_FILES[@]:-none found}"
 echo "--- Discovery: skill files ---"
 SKILL_FILES=()
@@ -69,6 +78,27 @@ for src in "${SKILL_FILES[@]:-}"; do
     rel="${f#"$sdir"/}"; row "$f" "$DEST_SKILLS/$name/$rel"
   done < <(find "$sdir" -type f | sort)
 done
+
+# 3b. Account skills exported from claude.ai. This Mac has no ~/.claude/skills:
+# the clinical EMR skills live in the user's claude.ai account (Cowork). They
+# were exported byte-for-byte through the remote Claude session that authored
+# this repo (local-stack/skills-port/), verified byte-identical at export.
+# Installing from the repo; the account originals are untouched (rollback path).
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PORT_SRC="$SCRIPT_DIR/../skills-port"
+if [[ -d "$PORT_SRC" ]]; then
+  for sdir in "$PORT_SRC"/*/; do
+    name="$(basename "$sdir")"
+    if [[ -e "$DEST_SKILLS/$name" ]]; then
+      echo "SKIP (exists): $DEST_SKILLS/$name"; echo "| claude.ai:$name (repo skills-port) | $DEST_SKILLS/$name/ | - | - | SKIPPED-EXISTS |" >> "$TABLE"; continue
+    fi
+    cp -Rp "$sdir" "$DEST_SKILLS/$name"
+    while IFS= read -r f; do
+      rel="${f#"$sdir"}"; row "$f" "$DEST_SKILLS/$name/$rel"
+    done < <(find "$sdir" -type f | sort)
+  done
+  echo "- Phase 4 source deviation: no CLAUDE.md or ~/.claude/skills exist on this Mac (Claude is used via the app); the clinical skills were exported byte-for-byte from the claude.ai account through the authoring session and installed from local-stack/skills-port. Account originals untouched." >> "$ART_DIR/deviations.md"
+fi
 
 # 4. Mapping table. Any mismatch is a hard failure needing line-by-line explanation.
 cat "$TABLE"
