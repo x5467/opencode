@@ -61,6 +61,7 @@ echo "- opencode (local): $OPENCODE_STATUS"
 echo
 echo "## Deviations from plan"
 echo "- Plan preparation ran in a Linux cloud container with no access to this Mac; all doc-verification was done against the OpenCode v1.18.25 source tree and re-verified live by these scripts (see local-stack/README.md)."
+cat "$ART_DIR/deviations.md" 2>/dev/null || true
 echo "- Add any others here (e.g. 8-bit KV required, guardrail relaxation, SKIPPED-EXISTS rows in the mapping table)."
 echo
 echo "## Daily driver"

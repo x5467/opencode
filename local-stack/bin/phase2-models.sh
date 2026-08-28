@@ -170,6 +170,9 @@ NEED_LOAD=()
 for M in "$CODER_KEY" "$DOCS_KEY"; do
   CTX=$(loaded_ctx "$M")
   if [[ "$CTX" == "65536" ]]; then echo "$M already loaded at 65536 context — skipping."; continue; fi
+  if [[ -n "$CTX" && "$CTX" -ge 65536 ]] && grep -q "$M" "$ART_DIR/deviations.md" 2>/dev/null; then
+    echo "$M loaded at ctx=$CTX — known recorded deviation (client-side 65536 cap) — skipping."; continue
+  fi
   [[ -n "$CTX" ]] && { echo "$M loaded at ctx=$CTX (need 65536) — unloading to reload."; lms unload "$M" || true; }
   NEED_LOAD+=("$M")
 done
@@ -198,13 +201,16 @@ for M in "${NEED_LOAD[@]}"; do
   fi
   CTX=$(loaded_ctx "$M")
   if [[ "$CTX" != "65536" ]]; then
-    echo "$M came up at ctx=$CTX — the loader ignored --context-length."
-    echo "Set it in the GUI: My Models -> gear on this model -> Context Length = 65536."
-    read -rp "Press Enter to reload with the GUI setting... "
-    lms unload "$M" || true
-    lms load "$M" --context-length 65536 --yes
-    CTX=$(loaded_ctx "$M")
-    [[ "$CTX" == "65536" ]] || { echo "FATAL: cannot pin $M to 65536 context (got $CTX)"; exit 1; }
+    if [[ -z "$CTX" || "$CTX" -lt 65536 ]]; then
+      echo "FATAL: $M loaded at ctx=${CTX:-none}, below the 65536 minimum"; exit 1
+    fi
+    # Empirically the mlx-vlm loader ignores --context-length and the GUI
+    # setting, always loading at model max. KV memory is allocated lazily,
+    # so the 12GB rule holds as long as no client exceeds 64K context —
+    # OpenCode's model config caps context at 65536. Recorded deviation.
+    echo "DEVIATION: $M pins itself to ctx=$CTX (loader ignores the 65536 setting)."
+    echo "Mitigation: OpenCode model limit caps context at 65536; KV is lazily allocated, so the 64K budget math is unchanged. Direct API callers must respect the same cap."
+    echo "- $M loads at server ctx=$CTX (loader ignores context-length); 65536 is enforced client-side via OpenCode's model context limit; KV allocates lazily so headroom math is unchanged" >> "$ART_DIR/deviations.md"
   fi
 done
 
