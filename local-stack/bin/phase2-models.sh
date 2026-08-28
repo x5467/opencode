@@ -155,8 +155,13 @@ if [[ "$KV8_REQUIRED" == "True" ]]; then
     1. LM Studio -> My Models (folder icon in the left rail).
     2. For each of the two models: click its gear/settings icon.
     3. Set "KV Cache Quantization" to 8-bit (both K and V if shown separately).
-    If the setting does not exist for the MLX engine in your build, STOP here:
-    the fp16 configuration is rejected by the hard rule and must be reported.
+    KNOWN LIMITATION: a model served through the mlx-vlm vision path (the
+    Qwen3.6 35B build is one) rejects KV quantization with "batched vision
+    path does not support KV cache quantization". For that model set KV
+    quantization back to off/fp16 — the MIXED config (coder 8-bit KV, docs
+    fp16 KV) totals ~50 GB at 64K each, leaving ~14 GB headroom, which still
+    satisfies the 12 GB rule. Only if NEITHER model accepts 8-bit KV is the
+    configuration rejected.
 EOF
   read -rp "Press Enter once 8-bit KV cache is set for both models (Ctrl-C to stop)... "
 fi
