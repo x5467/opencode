@@ -1,0 +1,14 @@
+Traceback (most recent call last):
+  File "async_bug.py", line 48, in <module>
+    asyncio.run(main())
+  File "/opt/homebrew/Cellar/python@3.12/3.12.6/Frameworks/Python.framework/Versions/3.12/lib/python3.12/asyncio/runners.py", line 194, in run
+    return runner.run(main)
+  File "/opt/homebrew/Cellar/python@3.12/3.12.6/Frameworks/Python.framework/Versions/3.12/lib/python3.12/asyncio/runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+  File "/opt/homebrew/Cellar/python@3.12/3.12.6/Frameworks/Python.framework/Versions/3.12/lib/python3.12/asyncio/base_events.py", line 687, in run_until_complete
+    return future.result()
+  File "async_bug.py", line 44, in main
+    await asyncio.gather(*(fetch_profile(u) for u in ids), warm(["1", "2", "3"]))
+  File "async_bug.py", line 29, in fetch_profile
+    _inflight.pop(user_id)
+KeyError: '2'

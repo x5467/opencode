@@ -1,0 +1,35 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "share": "disabled",
+  "model": "lmstudio/__CODER_ID__",
+  "disabled_providers": [
+    "anthropic", "openai", "google", "azure", "amazon-bedrock",
+    "google-vertex", "google-vertex-anthropic", "openrouter", "opencode",
+    "github-copilot", "xai", "groq", "deepseek", "mistral", "together",
+    "fireworks", "cerebras", "perplexity", "huggingface", "moonshotai",
+    "alibaba", "zhipuai", "minimax", "morph", "vercel", "v0", "llama",
+    "inception", "upstage", "venice", "requesty", "baseten", "chutes",
+    "synthetic", "zai", "zai-coding-plan", "nvidia", "iflow", "qianfan",
+    "siliconflow", "nebius", "novita", "scaleway", "cloudflare-workers-ai",
+    "cortecs", "deepinfra", "githubmodels", "inference", "lambda", "sambanova"
+  ],
+  "provider": {
+    "lmstudio": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "LM Studio (local)",
+      "options": {
+        "baseURL": "http://127.0.0.1:1234/v1"
+      },
+      "models": {
+        "__CODER_ID__": {
+          "name": "Qwen3 Coder 30B A3B (local MLX 4-bit)",
+          "limit": { "context": 65536, "output": 16384 }
+        },
+        "__DOCS_ID__": {
+          "name": "Qwen3.6 35B A3B docs (local MLX 4-bit)",
+          "limit": { "context": 65536, "output": 16384 }
+        }
+      }
+    }
+  }
+}
